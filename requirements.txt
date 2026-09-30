@@ -1,0 +1,17 @@
+# Core service and search adapters
+beautifulsoup4
+ddgs>=9.16,<10
+fastmcp>=2.14.3,<3
+httpx
+langchain
+langchain-core
+langchain-openai
+langgraph
+mcp>=1.24,<1.29
+pydantic>=2.11.7,<3
+python-dotenv
+typing-extensions
+
+# Notebook and extraction workflow
+ipykernel
+requests

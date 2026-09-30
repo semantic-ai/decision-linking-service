@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.env
+/var/
+/dataset
+development.ipynb
+/src/ipi_legislation.egg-info
+/results
+/.github
+AGENTS.md

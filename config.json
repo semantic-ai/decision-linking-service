@@ -1,0 +1,9 @@
+{
+  "agent": {
+    "mcp_server_url": "http://127.0.0.1:8000/mcp",
+    "max_search_attempts": 3,
+    "temperature": 0.0,
+    "cache_path": "resolution-cache.jsonl"
+  },
+  "prompts": {}
+}
