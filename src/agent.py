@@ -62,21 +62,29 @@ class Agent:
         """Initialize the configured LangChain chat model.
 
         ``init_chat_model`` resolves the ``provider:model`` selector and reads
-        provider credentials from the environment.  Azure additionally needs
-        the deployment value normalized by :func:`src.config.load_agent_config`.
+        provider credentials from the environment.  Azure additionally uses
+        the generic LLM deployment value normalized by
+        :func:`src.config.load_agent_config`.
         """
         load_agent_environment()
         kwargs: dict[str, Any] = {"temperature": self.config.temperature}
-        endpoint = os.getenv("AZURE_OPENAI_ENDPOINT", "")
-        if self.config.azure_deployment and "/openai/v1" in endpoint.rstrip("/"):
+        endpoint = os.getenv("LLM_ENDPOINT", "")
+        api_key = os.getenv("LLM_API_KEY")
+        api_version = os.getenv("LLM_API_VERSION")
+        if self.config.llm_deployment and "/openai/v1" in endpoint.rstrip("/"):
             return ChatOpenAI(
-                api_key=os.environ["AZURE_OPENAI_API_KEY"],
+                api_key=api_key,
                 base_url=endpoint,
-                model=self.config.azure_deployment,
+                model=self.config.llm_deployment,
                 **kwargs,
             )
-        if self.config.azure_deployment:
-            kwargs["azure_deployment"] = self.config.azure_deployment
+        if self.config.llm_deployment:
+            kwargs.update(
+                azure_deployment=self.config.llm_deployment,
+                azure_endpoint=endpoint,
+                api_key=api_key,
+                api_version=api_version,
+            )
         return init_chat_model(self.config.model, **kwargs)
 
     # ------------------------------------------------------------------

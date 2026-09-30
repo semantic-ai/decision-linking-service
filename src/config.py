@@ -59,7 +59,7 @@ def _read_file_config(path: Path) -> _FileConfig:
 
 
 def load_agent_environment(env_file: Path | None = None) -> None:
-    """Expose legacy lowercase Azure values under LangChain's variable names.
+    """Expose legacy lowercase values under the generic LLM variable names.
 
     Canonical provider variables always win because aliases are installed with
     :meth:`dict.setdefault`.  Existing deployments can therefore migrate
@@ -67,10 +67,10 @@ def load_agent_environment(env_file: Path | None = None) -> None:
     """
     load_dotenv(env_file or DEFAULT_ENV_FILE, override=False)
     aliases = {
-        "subscription_key": "AZURE_OPENAI_API_KEY",
-        "azure_endpoint": "AZURE_OPENAI_ENDPOINT",
-        "api_version": "OPENAI_API_VERSION",
-        "deployment": "AZURE_OPENAI_DEPLOYMENT_NAME",
+        "subscription_key": "LLM_API_KEY",
+        "azure_endpoint": "LLM_ENDPOINT",
+        "api_version": "LLM_API_VERSION",
+        "deployment": "LLM_DEPLOYMENT_NAME",
     }
     for legacy_name, canonical_name in aliases.items():
         value = os.getenv(legacy_name)
@@ -81,19 +81,19 @@ def load_agent_environment(env_file: Path | None = None) -> None:
 def _resolve_model_selection() -> tuple[str, str | None]:
     """Resolve the canonical model selector and optional Azure deployment.
 
-    A legacy Azure deployment is sufficient to construct the equivalent
+    A generic LLM deployment is sufficient to construct the equivalent
     ``azure_openai:<deployment>`` selector.  Other providers must define the
     canonical ``MODEL`` value directly.
     """
     model = os.getenv("MODEL")
-    deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
+    deployment = os.getenv("LLM_DEPLOYMENT_NAME")
     if not model and deployment:
         model = f"azure_openai:{deployment}"
     if not model:
         raise ValueError("MODEL must be set in .env using the 'provider:model' format")
 
-    azure_deployment = deployment if model.startswith("azure_openai:") else None
-    return model, azure_deployment
+    llm_deployment = deployment if model.startswith("azure_openai:") else None
+    return model, llm_deployment
 
 
 # ---------------------------------------------------------------------------
@@ -133,7 +133,7 @@ def load_agent_config(
     resolved_config_file = config_file or DEFAULT_CONFIG_FILE
     file_config = _read_file_config(resolved_config_file)
     prompt_overrides = validate_prompt_overrides(file_config.prompts)
-    model, azure_deployment = _resolve_model_selection()
+    model, llm_deployment = _resolve_model_selection()
     cache_path = (
         Path(file_config.agent.cache_path)
         if file_config.agent.cache_path
@@ -146,7 +146,7 @@ def load_agent_config(
         mcp_server_url=file_config.agent.mcp_server_url,
         max_search_attempts=file_config.agent.max_search_attempts,
         temperature=file_config.agent.temperature,
-        azure_deployment=azure_deployment,
+        llm_deployment=llm_deployment,
         prompt_overrides=prompt_overrides,
         cache_path=cache_path,
     )

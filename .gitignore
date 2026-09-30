@@ -5,7 +5,6 @@ __pycache__/
 .env
 /var/
 /dataset
-development.ipynb
 /src/ipi_legislation.egg-info
 /results
 /.github

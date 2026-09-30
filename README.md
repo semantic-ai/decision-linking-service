@@ -253,11 +253,11 @@ Copy `.env.example` to `.env` and fill in your model provider credentials:
 # LangChain model selector (provider:model)
 MODEL=azure_openai:gpt-4.1
 
-# Azure OpenAI credentials (or standard OPENAI_API_KEY for OpenAI)
-AZURE_OPENAI_API_KEY=your-api-key
-AZURE_OPENAI_ENDPOINT=https://your-endpoint.openai.azure.com/
-AZURE_OPENAI_DEPLOYMENT_NAME=your-deployment-name
-OPENAI_API_VERSION=2025-03-01-preview
+# LLM credentials (used by Azure OpenAI in this example)
+LLM_API_KEY=your-api-key
+LLM_ENDPOINT=https://your-endpoint.openai.azure.com/
+LLM_DEPLOYMENT_NAME=your-deployment-name
+LLM_API_VERSION=2025-03-01-preview
 ```
 
 ### Running the MCP Server

@@ -218,7 +218,7 @@ class AgentConfig(BaseModel):
     mcp_server_url: str = "http://127.0.0.1:8000/mcp"
     max_search_attempts: int = Field(default=3, ge=1, le=3)
     temperature: float = 0.0
-    azure_deployment: str | None = None
+    llm_deployment: str | None = None
     prompt_overrides: dict[str, str] = Field(default_factory=dict)
     cache_path: Path | None = None
 
