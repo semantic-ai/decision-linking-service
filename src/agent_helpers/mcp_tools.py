@@ -1,5 +1,5 @@
 import json
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field, create_model
@@ -12,6 +12,9 @@ from pydantic import BaseModel, Field, create_model
 
 def _python_type(schema: dict[str, Any]) -> Any:
     """Convert a JSON Schema type into a Python type."""
+    if schema.get("enum"):
+        return Literal.__getitem__(tuple(schema["enum"]))
+
     # Handle nullable / union schemas.
     if "anyOf" in schema:
         choices = [

@@ -73,3 +73,8 @@ Add newly confirmed, valuable lessons here using `YYYY-MM-DDTHH:MM:SSZ - lesson`
 
 - 2026-09-29T11:00:00Z - Spatial planning instruments (RUP, BPA, gewestplan) across Flanders are indexed on DSI (dsi.omgeving.vlaanderen.be); search by distinctive plan name with municipality filter.
 - 2026-09-29T11:22:00Z - Stedenbouwkundige verordeningen (SVO, e.g. hemelwater, toegankelijkheid, publiciteit) and bouwverordeningen (BVO, e.g. Algemeen Bouwreglement, voetgangersverkeer) are indexed on DSI; route all SVO and BVO instruments to dsi.
+- 2026-10-05T08:29:30Z - For DSI plan lookups, search title variants separately from procedure and status filters before concluding that no match is available.
+- 2026-10-05T08:29:54Z - When exact-title searches return no results, retry with distinctive title fragments and the document type while retaining the municipality filter.
+- 2026-10-05T08:40:36Z - When exact-title or filtered searches return no hits, broaden the query and verify whether returned records are later phases or related instruments rather than treating them as the requested document.
+- 2026-10-05T08:42:06Z - When an exact-title search returns no results, retry with meaningful title components and jurisdiction filters before concluding that no document is available.
+- 2026-10-05T08:57:51Z - For technical background documents, search linked attachments or associated documents separately from the governing legal instrument.

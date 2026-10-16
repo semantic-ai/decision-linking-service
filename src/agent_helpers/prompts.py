@@ -86,7 +86,15 @@ unsupported municipality or source.
 Choose the source of the referenced instrument, not a local page that merely
 quotes it. Under the single-reference scope, normalize only the primary
 explicitly identifiable instrument; do not resolve anaphoric phrases such as
-"its implementing order" as another document.""",
+"its implementing order" as another document.
+
+When the primary source is genuinely uncertain at one of these boundaries,
+optionally put one conservative alternative in fallback_sources: reglement and
+ebesluitvorming for a Ghent general regulation versus decision, dsi and
+ebesluitvorming for a planning instrument versus local decision or permit, or
+codex and web_search for regional versus federal or European wording. Leave
+fallback_sources empty unless the boundary is genuinely ambiguous; never
+duplicate the primary source or name an unsupported source.""",
     search_candidates="""Search one classified legal reference using {tool_name}.
 
 You may call the selected tool repeatedly and inspect each result before
@@ -121,10 +129,28 @@ those facts are applicable. Do not accept rank one automatically, do not invent
 a URL, and distinguish a base instrument from amendments or documents that
 merely cite it.
 
-Use:
-- resolved: exactly one candidate is confirmed;
-- ambiguous: at least two candidates remain genuinely plausible;
-- unresolved: no candidate can be confirmed.
+Choose status and reason_code together:
+- resolved / confirmed: exactly one candidate is an exact match;
+- resolved_with_caveat / current_equivalent: exactly one authoritative
+    `reglement` candidate matches the regulation identity/type/subject and
+    municipality, the requested dated version is unavailable, and the candidate
+    is the later current official page for that same regulation. For Stad Gent
+    Reglementen, an exact current title/type/municipality match with a later
+    approval or announcement date is sufficient evidence of a current
+    equivalent; the page does not need to say ``consolidated`` explicitly.
+    Explain the qualification in a non-empty caveat. Do not infer this from
+    title similarity alone, and do not use it for an amendment or a candidate
+    with a materially different scope. A date conflict with an exact current
+    equivalent is a caveat, not automatically a version mismatch. Use
+    version_mismatch when no current equivalent is established or an explicit
+    historical version is required.
+- ambiguous / candidate_conflict: at least two candidates remain genuinely
+    plausible;
+- unresolved: use source_no_match, source_incomplete, unsupported_source,
+    insufficient_reference, or version_mismatch as appropriate.
+
+The reason_code is authoritative for reporting; keep reason as a concise human
+narrative. A qualified result is never an ordinary resolved result.
 
 Source errors, incomplete fan-out, and truncated results are operational
 evidence, not proof that no matching document exists. Reflect material source

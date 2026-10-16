@@ -21,6 +21,14 @@ from src.models import (
 
 BASE_URL = "https://ebesluitvorming.gent.be"
 SUPPORTED_RESULT_TYPES = frozenset({"MEETING_ITEM"})
+BROWSER_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+    "Accept-Language": "nl-BE,nl;q=0.9,en;q=0.8",
+}
 
 
 def agenda_item_url(meeting_id: str, agenda_item_id: str) -> str:
@@ -101,6 +109,9 @@ ORGANEN_MAPPING = {
 _ORGAN_BY_NORMALIZED_NAME = {
     " ".join(name.split()).casefold(): name for name in ORGANEN_MAPPING
 }
+_ORGAN_ALIASES = {
+    "burgemeester van gent": "Burgemeester",
+}
 
 
 def normalize_organ_name(organ: str | None) -> str | None:
@@ -108,6 +119,8 @@ def normalize_organ_name(organ: str | None) -> str | None:
     if organ is None or not organ.strip():
         return None
     normalized = " ".join(organ.split()).casefold()
+    if normalized in _ORGAN_ALIASES:
+        return _ORGAN_ALIASES[normalized]
     try:
         return _ORGAN_BY_NORMALIZED_NAME[normalized]
     except KeyError as error:
@@ -131,7 +144,11 @@ class EBesluitvormingSearch(LegislationSearch):
     """
 
     def __init__(self, client: httpx.Client | None = None):
-        self._client = client or httpx.Client(timeout=20)
+        self._client = client or httpx.Client(
+            timeout=20,
+            follow_redirects=True,
+            headers=BROWSER_HEADERS,
+        )
         self._owns_client = client is None
 
     def close(self) -> None:
@@ -150,6 +167,7 @@ class EBesluitvormingSearch(LegislationSearch):
         title: str | None = None,
         type_id: str | None = None,
         page_size: int = 100,
+        max_pages: int = 5,
     ) -> SearchOutcome:
         """Return Ghent candidates plus completeness and failure evidence.
 
@@ -168,8 +186,12 @@ class EBesluitvormingSearch(LegislationSearch):
         type_id
             Optional source publication-classification identifier.
         page_size
-            Number of rows requested from the first result page.
+            Number of rows requested from each result page.
+        max_pages
+            Maximum number of result pages fetched per governing body.
         """
+        if max_pages < 1:
+            raise ValueError("max_pages must be at least 1")
         retrieved_at = datetime.now(timezone.utc)
         canonical_organ = normalize_organ_name(organ)
         organ_ids = (
@@ -182,101 +204,112 @@ class EBesluitvormingSearch(LegislationSearch):
         truncated = False
 
         for organ_id in organ_ids:
-            params = {"query": query, "page": "0", "pageSize": str(page_size)}
-            if organ_id:
-                params["organId"] = organ_id
-            if meeting_date_start:
-                params["meetingDateStart"] = meeting_date_start
-            if meeting_date_end:
-                params["meetingDateEnd"] = meeting_date_end
-            if title:
-                params["title"] = title
-            if type_id:
-                params["typeId"] = type_id
+            for page in range(max_pages):
+                params = {
+                    "query": query,
+                    "page": str(page),
+                    "pageSize": str(page_size),
+                }
+                if organ_id:
+                    params["organId"] = organ_id
+                if meeting_date_start:
+                    params["meetingDateStart"] = meeting_date_start
+                if meeting_date_end:
+                    params["meetingDateEnd"] = meeting_date_end
+                if title:
+                    params["title"] = title
+                if type_id:
+                    params["typeId"] = type_id
 
-            backend_request_count += 1
-            try:
-                response = self._client.get(f"{BASE_URL}/zoeken", params=params)
-            except httpx.TimeoutException as error:
-                errors.append(
-                    SearchError(
-                        backend="ebesluitvorming",
-                        kind=SearchErrorKind.TIMEOUT,
-                        message=f"Ghent search request timed out: {error}",
-                        retryable=True,
+                backend_request_count += 1
+                try:
+                    response = self._client.get(f"{BASE_URL}/zoeken", params=params)
+                except httpx.TimeoutException as error:
+                    errors.append(
+                        SearchError(
+                            backend="ebesluitvorming",
+                            kind=SearchErrorKind.TIMEOUT,
+                            message=f"Ghent search request timed out: {error}",
+                            retryable=True,
+                        )
                     )
-                )
-                continue
-            except httpx.HTTPError as error:
-                errors.append(
-                    SearchError(
-                        backend="ebesluitvorming",
-                        kind=SearchErrorKind.NETWORK,
-                        message=f"Ghent search request failed: {error}",
-                        retryable=True,
+                    break
+                except httpx.HTTPError as error:
+                    errors.append(
+                        SearchError(
+                            backend="ebesluitvorming",
+                            kind=SearchErrorKind.NETWORK,
+                            message=f"Ghent search request failed: {error}",
+                            retryable=True,
+                        )
                     )
-                )
-                continue
+                    break
 
-            if response.status_code != 200:
-                errors.append(
-                    SearchError(
-                        backend="ebesluitvorming",
-                        kind=SearchErrorKind.HTTP,
-                        message=(
-                            "Ghent search returned HTTP "
-                            f"{response.status_code} for organ_id={organ_id}"
-                        ),
-                        retryable=(
-                            response.status_code >= 500
-                            or response.status_code in {408, 429}
-                        ),
-                        status_code=response.status_code,
+                if response.status_code != 200:
+                    errors.append(
+                        SearchError(
+                            backend="ebesluitvorming",
+                            kind=SearchErrorKind.HTTP,
+                            message=(
+                                "Ghent search returned HTTP "
+                                f"{response.status_code} for organ_id={organ_id}"
+                            ),
+                            retryable=(
+                                response.status_code >= 500
+                                or response.status_code in {408, 429}
+                            ),
+                            status_code=response.status_code,
+                        )
                     )
-                )
-                continue
+                    break
 
-            try:
-                rows = self._parse_html(response.text)
-            except Exception as error:
-                errors.append(
-                    SearchError(
-                        backend="ebesluitvorming",
-                        kind=SearchErrorKind.INVALID_RESPONSE,
-                        message=f"Ghent search page could not be parsed: {error}",
-                        retryable=False,
-                    )
-                )
-                continue
-
-            truncated = truncated or len(rows) >= page_size
-            for row in rows:
-                # The general search page also returns written questions and
-                # other records that do not have an agenda-item public URL.
-                # They are valid source rows, but outside this adapter's
-                # agenda-item contract rather than malformed responses.
-                if row["type"] not in SUPPORTED_RESULT_TYPES:
-                    continue
-                missing_fields = [
-                    field for field in ("id", "meeting_id", "title") if not row[field]
-                ]
-                if missing_fields:
+                try:
+                    rows = self._parse_html(response.text)
+                except Exception as error:
                     errors.append(
                         SearchError(
                             backend="ebesluitvorming",
                             kind=SearchErrorKind.INVALID_RESPONSE,
-                            message=(
-                                "Ghent search row is missing: "
-                                + ", ".join(missing_fields)
-                            ),
+                            message=f"Ghent search page could not be parsed: {error}",
                             retryable=False,
                         )
                     )
-                    continue
-                if row["id"] in seen_ids:
-                    continue
-                seen_ids.add(row["id"])
-                all_rows.append(row)
+                    break
+
+                for row in rows:
+                    # The general search page also returns written questions and
+                    # other records that do not have an agenda-item public URL.
+                    # They are valid source rows, but outside this adapter's
+                    # agenda-item contract rather than malformed responses.
+                    if row["type"] not in SUPPORTED_RESULT_TYPES:
+                        continue
+                    missing_fields = [
+                        field
+                        for field in ("id", "meeting_id", "title")
+                        if not row[field]
+                    ]
+                    if missing_fields:
+                        errors.append(
+                            SearchError(
+                                backend="ebesluitvorming",
+                                kind=SearchErrorKind.INVALID_RESPONSE,
+                                message=(
+                                    "Ghent search row is missing: "
+                                    + ", ".join(missing_fields)
+                                ),
+                                retryable=False,
+                            )
+                        )
+                        continue
+                    if row["id"] in seen_ids:
+                        continue
+                    seen_ids.add(row["id"])
+                    all_rows.append(row)
+
+                if len(rows) < page_size:
+                    break
+                if page + 1 >= max_pages:
+                    truncated = True
 
         return SearchOutcome(
             candidates=self._to_results(all_rows, retrieved_at),

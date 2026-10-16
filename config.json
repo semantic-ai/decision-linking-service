@@ -2,7 +2,9 @@
   "agent": {
     "mcp_server_url": "http://127.0.0.1:8000/mcp",
     "max_search_attempts": 3,
+    "max_pivots": 1,
     "temperature": 0.0,
+    "reasoning_effort": "none",
     "cache_path": "resolution-cache.jsonl"
   },
   "prompts": {}

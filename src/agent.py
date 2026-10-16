@@ -2,6 +2,7 @@
 
 import logging
 import os
+from time import perf_counter
 from typing import Any
 
 from fastmcp import Client
@@ -17,7 +18,8 @@ from src.agent_helpers.search_graph import (
     create_search_graph,
     initial_search_state,
 )
-from src.tools.memory import write_memory
+# Lesson persistence is disabled while the accumulated guideline lessons are curated.
+# from src.tools.memory import write_memory
 
 
 logger = logging.getLogger(__name__)
@@ -67,7 +69,11 @@ class Agent:
         :func:`src.config.load_agent_config`.
         """
         load_agent_environment()
-        kwargs: dict[str, Any] = {"temperature": self.config.temperature}
+        kwargs: dict[str, Any] = {
+            "temperature": self.config.temperature,
+            "reasoning_effort": self.config.reasoning_effort,
+            "max_completion_tokens": 12_000,
+        }
         endpoint = os.getenv("LLM_ENDPOINT", "")
         api_key = os.getenv("LLM_API_KEY")
         api_version = os.getenv("LLM_API_VERSION")
@@ -148,6 +154,7 @@ class Agent:
         RuntimeError
             If the MCP server is missing a required graph tool.
         """
+        started_at = perf_counter()
         reference = reference.strip()
         if not reference:
             raise ValueError("reference must not be empty")
@@ -159,27 +166,37 @@ class Agent:
                 tools=tools,
                 prompts=self.prompts,
                 max_search_attempts=self.config.max_search_attempts,
+                max_pivots=self.config.max_pivots,
             )
             state = await graph.ainvoke(
                 initial_search_state(reference, document_context=document_context)
             )
-        lesson = state["proposed_guideline_lesson"]
-        classified = state["classified_reference"]
-        if lesson and classified and classified.source:
-            try:
-                write_memory(classified.source.value, lesson)
-            except Exception as error:
-                logger.warning("Failed to persist guideline lesson: %s", error)
+        # lesson = state["proposed_guideline_lesson"]
+        # classified = state["classified_reference"]
+        # if lesson and classified and classified.source:
+        #     try:
+        #         write_memory(classified.source.value, lesson)
+        #     except Exception as error:
+        #         logger.warning("Failed to persist guideline lesson: %s", error)
 
         response = ResolutionResponse(
             reference=reference,
             classification=state["classified_reference"],
             status=state["resolution_status"],
+            reason_code=state["reason_code"],
             results=state["results"],
             reason=state["reason"],
+            caveat=state["caveat"],
             attempt_count=state["attempt_count"],
             trace=state["trace"],
             proposed_guideline_lesson=state["proposed_guideline_lesson"],
+        )
+
+        logger.info(
+            "Agent search finished reference=%r status=%s duration_ms=%.0f",
+            reference,
+            response.status.value,
+            (perf_counter() - started_at) * 1000,
         )
 
         return response

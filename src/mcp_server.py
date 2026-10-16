@@ -2,14 +2,15 @@
 
 import logging
 from dataclasses import asdict
-from typing import Literal
+from time import perf_counter
+from typing import Literal, TypeAlias
 
 from fastmcp import FastMCP
 
 from src.models import ReferenceType, SearchOutcome
 from src.tools.codex import CodexSearch
 from src.tools.dsi import DsiSearch
-from src.tools.ebesluitvorming import EBesluitvormingSearch
+from src.tools.ebesluitvorming import EBesluitvormingSearch, ORGANEN_MAPPING
 from src.tools.lblod import LblodSearch
 from src.tools.memory import fetch_memory
 from src.tools.reglement import ReglementSearch
@@ -25,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 Source = Literal["codex", "dsi", "ebesluitvorming", "lblod", "reglement", "web_search"]
+Organ: TypeAlias = Literal.__getitem__(tuple(ORGANEN_MAPPING))  # type: ignore[reportInvalidTypeForm]
 
 mcp = FastMCP(
     name="IPI Legislation Search",
@@ -73,6 +75,17 @@ def _log_tool_call(
     logger.info("[%s] %s", tool_name, " ".join(values))
 
 
+def _log_tool_result(tool_name: str, outcome: SearchOutcome, duration_ms: float) -> None:
+    logger.info(
+        "[%s] result candidates=%d complete=%s truncated=%s duration_ms=%.0f",
+        tool_name,
+        len(outcome.candidates),
+        outcome.complete,
+        outcome.truncated,
+        duration_ms,
+    )
+
+
 def search_codex(
     query: str,
     doc_type: ReferenceType | None = None,
@@ -88,18 +101,22 @@ def search_codex(
         Candidates and structured completeness/failure evidence.
     """
     _log_tool_call("search_codex", query, category=doc_type)
+    started_at = perf_counter()
     with CodexSearch() as search:
-        return _serialize_outcome(search.search(query, doc_type=doc_type))
+        outcome = search.search(query, doc_type=doc_type)
+    _log_tool_result("search_codex", outcome, (perf_counter() - started_at) * 1000)
+    return _serialize_outcome(outcome)
 
 
 def search_ebesluitvorming(
     query: str,
-    organ: str | None = None,
+    organ: Organ | None = None,
     meeting_date_start: str | None = None,
     meeting_date_end: str | None = None,
     title: str | None = None,
     type_id: str | None = None,
     page_size: int = 100,
+    max_pages: int = 5,
 ) -> dict:
     """Search City of Ghent decisions and agenda items.
 
@@ -112,7 +129,8 @@ def search_ebesluitvorming(
             Ghent search endpoint.
         title: Optional title or exact decision-number filter.
         type_id: Optional source publication-classification identifier.
-        page_size: Number of rows requested from page zero.
+        page_size: Number of rows requested from each page.
+        max_pages: Maximum result pages fetched per governing body.
 
     Returns:
         Candidates and structured completeness/failure evidence.
@@ -126,7 +144,9 @@ def search_ebesluitvorming(
         title=title,
         type_id=type_id,
         page_size=page_size,
+        max_pages=max_pages,
     )
+    started_at = perf_counter()
     with EBesluitvormingSearch() as search:
         outcome = search.search(
             query,
@@ -136,7 +156,11 @@ def search_ebesluitvorming(
             title=title,
             type_id=type_id,
             page_size=page_size,
+            max_pages=max_pages,
         )
+    _log_tool_result(
+        "search_ebesluitvorming", outcome, (perf_counter() - started_at) * 1000
+    )
     return _serialize_outcome(outcome)
 
 
@@ -156,12 +180,14 @@ def search_reglement(
         Candidates and structured completeness/failure evidence.
     """
     _log_tool_call("search_reglement", query, category=regulation_type, page=page)
+    started_at = perf_counter()
     with ReglementSearch() as search:
         outcome = search.search(
             query,
             regulation_type=regulation_type,
             page=page,
         )
+    _log_tool_result("search_reglement", outcome, (perf_counter() - started_at) * 1000)
     return _serialize_outcome(outcome)
 
 
@@ -197,6 +223,7 @@ def search_dsi(
         status=status,
         page=page,
     )
+    started_at = perf_counter()
     with DsiSearch() as search:
         outcome = search.search(
             query,
@@ -207,6 +234,7 @@ def search_dsi(
             page=page,
             page_size=page_size,
         )
+    _log_tool_result("search_dsi", outcome, (perf_counter() - started_at) * 1000)
     return _serialize_outcome(outcome)
 
 
@@ -234,6 +262,7 @@ def search_lblod(
         governing_body=governing_body,
         session_date=session_date,
     )
+    started_at = perf_counter()
     with LblodSearch() as search:
         outcome = search.search(
             query,
@@ -241,6 +270,7 @@ def search_lblod(
             governing_body=governing_body,
             session_date=session_date,
         )
+    _log_tool_result("search_lblod", outcome, (perf_counter() - started_at) * 1000)
     return _serialize_outcome(outcome)
 
 
@@ -259,8 +289,11 @@ def search_web(
         Candidates and structured completeness/failure evidence.
     """
     _log_tool_call("search_web", query, category=doc_type)
+    started_at = perf_counter()
     with WebSearch() as search:
-        return _serialize_outcome(search.search(query, doc_type=doc_type))
+        outcome = search.search(query, doc_type=doc_type)
+    _log_tool_result("search_web", outcome, (perf_counter() - started_at) * 1000)
+    return _serialize_outcome(outcome)
 
 
 # ---------------------------------------------------------------------------

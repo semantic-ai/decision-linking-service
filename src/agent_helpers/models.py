@@ -46,8 +46,23 @@ class ResolutionStatus(StrEnum):
     """Terminal outcomes exposed by :class:`ResolutionResponse`."""
 
     RESOLVED = "resolved"
+    RESOLVED_WITH_CAVEAT = "resolved_with_caveat"
     AMBIGUOUS = "ambiguous"
     UNRESOLVED = "unresolved"
+
+
+class ResolutionReasonCode(StrEnum):
+    """Machine-readable reason for a terminal resolution outcome."""
+
+    CONFIRMED = "confirmed"
+    CURRENT_EQUIVALENT = "current_equivalent"
+    VERSION_MISMATCH = "version_mismatch"
+    SOURCE_NO_MATCH = "source_no_match"
+    SOURCE_INCOMPLETE = "source_incomplete"
+    UNSUPPORTED_SOURCE = "unsupported_source"
+    INSUFFICIENT_REFERENCE = "insufficient_reference"
+    CANDIDATE_CONFLICT = "candidate_conflict"
+    VALIDATION_FAILURE = "validation_failure"
 
 
 # ---------------------------------------------------------------------------
@@ -143,6 +158,13 @@ class ClassifiedReference(BaseModel):
         default=None,
         description="Authoritative supported source, or null when none applies",
     )
+    fallback_sources: list[SearchSource] = Field(
+        default_factory=list,
+        description=(
+            "Ordered alternative sources to try only if the primary is "
+            "unresolved; at most one is used"
+        ),
+    )
     reason: str = Field(description="Concise explanation of classification and source")
 
 
@@ -150,8 +172,10 @@ class ValidationDecision(BaseModel):
     """Terminal validation decision for the accumulated candidate pool."""
 
     status: ResolutionStatus
+    reason_code: ResolutionReasonCode
     selected_indices: list[int] = Field(default_factory=list)
     reason: str
+    caveat: str | None = Field(default=None)
     proposed_guideline_lesson: str | None = Field(
         default=None,
         description=(
@@ -182,10 +206,26 @@ class ValidationDecision(BaseModel):
         """Keep the selected candidate count consistent with terminal status."""
         if self.status == ResolutionStatus.RESOLVED and len(self.selected_indices) != 1:
             raise ValueError("resolved requires exactly one selected index")
+        if self.status == ResolutionStatus.RESOLVED and self.reason_code != ResolutionReasonCode.CONFIRMED:
+            raise ValueError("resolved requires reason_code confirmed")
+        if self.status == ResolutionStatus.RESOLVED and self.caveat is not None:
+            raise ValueError("resolved cannot carry a caveat")
+        if self.status == ResolutionStatus.RESOLVED_WITH_CAVEAT:
+            if len(self.selected_indices) != 1:
+                raise ValueError("resolved_with_caveat requires exactly one selected index")
+            if self.reason_code != ResolutionReasonCode.CURRENT_EQUIVALENT:
+                raise ValueError("resolved_with_caveat requires reason_code current_equivalent")
+            if not self.caveat or not self.caveat.strip():
+                raise ValueError("resolved_with_caveat requires a non-empty caveat")
         if self.status == ResolutionStatus.AMBIGUOUS and len(self.selected_indices) < 2:
             raise ValueError("ambiguous requires at least two selected indices")
-        if self.status == ResolutionStatus.UNRESOLVED and self.selected_indices:
-            raise ValueError("unresolved cannot select candidates")
+        if self.status in {ResolutionStatus.AMBIGUOUS, ResolutionStatus.UNRESOLVED} and self.reason_code in {
+            ResolutionReasonCode.CONFIRMED,
+            ResolutionReasonCode.CURRENT_EQUIVALENT,
+        }:
+            raise ValueError("non-success status requires a non-success reason code")
+        if self.status == ResolutionStatus.UNRESOLVED:
+            self.selected_indices = []
         return self
 
 
@@ -201,9 +241,14 @@ class SearchGraphState(TypedDict):
     trace: list[AttemptTrace]
     candidates: list[SearchResult]
     resolution_status: ResolutionStatus
+    reason_code: ResolutionReasonCode
     results: list[SearchResult]
     reason: str
+    caveat: str | None
     proposed_guideline_lesson: str | None
+    source_queue: list[SearchSource]
+    current_source: SearchSource | None
+    pivot_count: int
 
 
 # ---------------------------------------------------------------------------
@@ -216,8 +261,10 @@ class AgentConfig(BaseModel):
 
     model: str
     mcp_server_url: str = "http://127.0.0.1:8000/mcp"
-    max_search_attempts: int = Field(default=3, ge=1, le=3)
+    max_search_attempts: int = Field(default=3, ge=1, le=5)
+    max_pivots: int = Field(default=1, ge=0, le=2)
     temperature: float = 0.0
+    reasoning_effort: str = "none"
     llm_deployment: str | None = None
     prompt_overrides: dict[str, str] = Field(default_factory=dict)
     cache_path: Path | None = None
@@ -229,8 +276,10 @@ class ResolutionResponse(BaseModel):
     reference: str
     classification: ClassifiedReference | None = None
     status: ResolutionStatus
+    reason_code: ResolutionReasonCode = ResolutionReasonCode.CONFIRMED
     results: list[SearchResult] = Field(default_factory=list)
     reason: str
+    caveat: str | None = None
     attempt_count: int
     trace: list[AttemptTrace] = Field(default_factory=list)
     proposed_guideline_lesson: str | None = None

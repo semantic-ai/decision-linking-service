@@ -58,6 +58,16 @@ this adapter.
   body-of-approval clue.
 - A regulation page is the source for the regulation text; an agenda or decision
   page is not a substitute merely because it contains the same title.
+- When a supplied approval date is historical and no candidate has that date,
+  an exact current Stad Gent Reglementen page with the same title, category,
+  municipality, and a later approval or announcement date is the current
+  equivalent. Select it as `resolved_with_caveat` with `current_equivalent`,
+  and state that the historical version was not located. Do not require the
+  page to use the word `consolidated`.
+- Keep the result unresolved with `version_mismatch` when the title, category,
+  municipality, or scope differs materially, when the candidate is an
+  amendment rather than the regulation itself, or when the reference explicitly
+  requires the historical version.
 - Preserve ambiguity between distinct regulations with similar titles.
 - Treat the numeric `data-nid` as the source document ID and keep the public
   slug URL unchanged.
@@ -77,25 +87,9 @@ this adapter.
 
 Add newly confirmed, valuable lessons here using `YYYY-MM-DDTHH:MM:SSZ - lesson`.
 
-- 2026-09-28T00:00:00Z - Stad Gent exposes regulation categories as regulation_type checkbox IDs; do not send the approval-body filter when searching by category.
-- 2026-09-28T00:00:00Z - The Reglementen listing is paged at twelve result articles per page and reports a total count in the view header.
-- 2026-09-28T12:55:08Z - When an exact-title search returns similarly titled regulations, verify the approval date and official title before selecting a candidate.
+- 2026-09-28T00:00:00Z - Use the source regulation category IDs and do not send an approval-body filter when searching by category.
+- 2026-09-28T00:00:00Z - The Reglementen listing is paged and reports a total count in the view header.
+- 2026-09-28T12:55:08Z - Verify the approval date and official title before selecting a similarly titled regulation.
 - 2026-09-28T14:44:11Z - Verify document type and date before treating broad place-name matches as candidates.
-- 2026-09-28T16:34:45Z - Wanneer een exacte-titelzoekopdracht alleen een latere versie oplevert, controleer dan ook historische goedkeuringsgegevens of gearchiveerde versies.
-- 2026-09-28T16:35:11Z - Controleer bij historische verwijzingen altijd expliciet de goedkeuringsdatum en onderscheid een latere versie of wijziging van het oorspronkelijke instrument.
-- 2026-09-28T16:36:37Z - Controleer bij exacte titelovereenkomsten altijd afzonderlijk de goedkeuringsdatum om een latere hergoedkeuring niet als het oorspronkelijke instrument te identificeren.
-- 2026-09-28T16:37:22Z - Controleer bij een exacte titelmatch altijd de goedkeuringsdatum en behandel een latere versie met dezelfde titel niet automatisch als het gevraagde basisinstrument.
-- 2026-09-28T16:37:45Z - Controleer bij titelovereenkomsten altijd afzonderlijk de goedkeuringsdatum om historische instrumenten van latere herzieningen of vervangende documenten te onderscheiden.
-- 2026-09-28T16:39:33Z - When a reference includes a historical approval date, search and validate historical versions separately from later regulations with similar titles.
-- 2026-09-28T16:41:39Z - Controleer bij titelovereenkomsten altijd expliciet de goedkeuringsdatum en behandel een afwijkende datum niet als een bevestiging.
-- 2026-09-28T16:47:09Z - Neem bij historische lokale reglementen de goedkeuringsdatum of het jaartal expliciet mee in de zoekstrategie om latere versies of vervangende instrumenten niet als match te selecteren.
-- 2026-09-28T16:49:55Z - Bij reglementen met historische versies moet de goedkeuringsdatum afzonderlijk worden gevalideerd naast de titel.
-- 2026-09-28T16:53:27Z - Controleer bij gelijkende reglementen altijd de officiële goedkeuringsdatum en het goedkeuringsorgaan in het documentrecord; behandel lege datumgerichte zoekresultaten niet als gezaghebbende afwezigheid.
-- 2026-09-28T16:58:29Z - When exact-title searches fail, retry with normalized wording and distinctive shorter title phrases while separately verifying the document date.
-- 2026-09-28T17:01:10Z - Wanneer een exacte titelzoekopdracht geen resultaat oplevert, probeer onderscheidende titelgedeelten en spellingvarianten afzonderlijk te zoeken.
-- 2026-09-28T17:05:58Z - Herhaal bij lokale reglementen zoekopdrachten met titelvarianten en zonder documenttype, omdat kleine woordverschillen resultaten kunnen uitsluiten.
-- 2026-09-28T19:04:50Z - When exact-title searches return nothing, retry with shorter title fragments and verify any hit against the approval date and document version.
-- 2026-09-28T19:06:55Z - When a title match has a different approval date, perform a separate source search using the exact date and historical-version terms before resolving.
-- 2026-09-28T19:08:39Z - Probeer bij lokale reglementen zowel volledige titelfragmenten als onderscheidende fonds- of entiteitsnamen afzonderlijk te zoeken.
-- 2026-09-28T19:30:54Z - When an instrument is absent from exact-title searches, check the source’s dedicated spatial-planning or zoning collection rather than relying only on general regulation filters.
-- 2026-09-29T11:25:00Z - Stedenbouwkundige verordeningen (SVO, gewSVO, gemSVO) and bouwverordeningen / bouwreglementen (BVO, gewBVO, gemBVO, e.g. Algemeen Bouwreglement) are spatial planning regulations indexed on DSI; route them to DsiSearch instead of ReglementSearch.
+- 2026-09-28T19:30:54Z - When exact-title searches fail, retry with shorter title fragments and verify the document version.
+- 2026-09-29T11:25:00Z - Route stedenbouwkundige and bouwverordeningen to DSI rather than ReglementSearch.

@@ -5,24 +5,45 @@ when the Vlaamse Codex does not cover the referenced legal level. Search only
 official publisher pages returned from these exact HTTPS hosts:
 
 - `ejustice.just.fgov.be` for Belgian federal legislation;
+- `economie.fgov.be` for official FOD Economie legislation pages;
 - `eur-lex.europa.eu` for European Union legislation;
 - `www.remi.legal` for legal-reference results from Remi.
 
 The adapter uses DDGS only for discovery. It sends one request per allowed host
 with a query of the form `query site:host`; do not add `site:` expressions to
 the tool argument.
+For Belgian decrees and executive orders, the Belgian request is narrowed to
+`site:ejustice.just.fgov.be/eli/besluit`, the official ELI path for decisions.
+These searches use only eJustice and FOD Economie; EUR-Lex and Remi remain
+available for searches without a Belgian decree/executive-order document type.
+Returned URLs must still use HTTPS and one of the exact configured hosts.
 
-DDGS title and body snippet are the only evidence available in this version.
-The adapter does not fetch result pages. Treat snippets as discovery evidence,
-not proof of identity: confirm the instrument's title, kind, identifier, date,
-and jurisdiction where the snippet makes those facts available. Remain
-unresolved or ambiguous when the evidence cannot uniquely identify the cited
-instrument. Never accept a result from another host, an HTTP URL, a subdomain,
-or a page that merely cites the instrument.
+DDGS title and body remain discovery evidence, and the adapter additionally
+fetches each accepted HTTPS result from the allowlisted host. Fetching follows
+redirects only after validating every destination against the same host
+allowlist and rejecting private, loopback, and link-local addresses. Pages are
+bounded and must be HTML; fetch or parse failures stay attached to the
+candidate as `metadata.enrichment` and do not make an otherwise successful
+discovery incomplete.
 
-The optional document type is retained for the shared search contract but is
-not a DDGS filter in this version. Refine the title or identifier when useful,
-and treat an empty successful lookup separately from a faile## Query construction rules
+When available, enriched metadata includes `canonical_url`, `legal_source_url`,
+`numac`, `celex`, `eur_lex_uri` for non-CELEX EUR-Lex identifiers such as
+`NIM:...`, `page_title`, and publication-only `update_date`. URL-derived
+identifiers are retained even when EUR-Lex returns an empty `202` response. The
+`snippet`, title, URL, and URL-derived `doc_id` remain unchanged. A legal-source
+identifier may fill an otherwise empty `doc_id`, but page titles and update
+dates never become identifiers or enactment dates. Treat all evidence as
+supporting validation evidence and remain unresolved or ambiguous when it
+cannot uniquely identify the cited instrument. Never accept a result from
+another host, an HTTP URL, a subdomain, or a page that merely cites the
+instrument.
+
+The optional document type narrows Belgian decree and executive-order
+discovery to the official Justel ELI decision path. Refine the title or
+identifier when useful, and treat an empty successful lookup separately from a
+failed lookup.
+
+## Query construction rules
 
 Build a short discovery query from the normalized instrument identity. Search
 for the base document, not the specific citation or provision where it occurs.
@@ -174,6 +195,7 @@ fallback evidence, but an exact official Belgian or EUR-Lex result is preferred.
 
 - Prioritize authoritative official sources for the relevant legal level:
   - `ejustice.just.fgov.be` for Belgian federal legislation;
+  - `economie.fgov.be` for official FOD Economie legislation pages;
   - `eur-lex.europa.eu` for European Union legislation.
 - `www.remi.legal` and other non-official sources may be used only as fallback
   or supplementary evidence when an official source is unavailable or
@@ -192,99 +214,12 @@ fallback evidence, but an exact official Belgian or EUR-Lex result is preferred.
 
 ## Practical lessons
 
-- `"Nieuwe Gemeentewet"` returned base law NUMAC `1988062450` at rank 0 on Remi;
-  `"De Nieuwe Gemeentewet, artikel 119"` returned 0 hits, and
-  `"De Nieuwe Gemeentewet"` returned only amending acts. Strip leading `De`
-  and exclude article locators from the initial query.
-- `Wet tot regeling van de private en bijzondere veiligheid` and
-  `Wet 02-10-2017 private en bijzondere veiligheid` both returned the base act
-  NUMAC `2017031388` at rank 0. Quoting the full reference or using ISO date
-  `2017-10-02` returned 0 hits.
-- `"28 december 1983" "sterke drank"` returned base liquor act NUMAC
-  `1983004493` at rank 0; `"wet 28 december 1983"` returned 0 hits, and
-  `"28 december 1983" wet` returned an unrelated budget act. For generic dated
-  laws, include distinctive subject terms when known.
-- `"Algemene Verordening Gegevensbescherming"` and `Verordening (EU) 2016/679`
-  both returned CELEX `32016R0679` at rank 0.
-- `Richtlijn 2006/123/EG` returned CELEX `32006L0123`; adding `artikel 15`
-  returned 0 hits. Search the base directive first and validate the article
-  from candidate text.
-- `Wet inzake overheidsopdrachten 17 juni 2016` returned NUMAC `2016021053` at
-  rank 0; overquoting both phrases `"Wet inzake overheidsopdrachten" "17 juni 2016"`
-  returned 0 hits, and adding `artikel 42, §1, 1°d` returned only transposition
-  n- 2026-09-24T11:00:20Z - For generic legal titles, combine jurisdiction and document type with multiple date formats and distinctive subject terms.- 2026-09-24T11:08:53Z - Bij een generieke instrumenttitel die veel verwijzende documenten oplevert, voeg in web_search de officiële juridische identifier of de volledige officiële titel toe.
-- 2026-09-24T11:10:41Z - If an exact-title search returns no candidates, retry with the unquoted title and then search any identifier surfaced by the source.
+Add newly confirmed, valuable lessons here using `YYYY-MM-DDTHH:MM:SSZ - lesson`.
 
-otices rather than the base act.
-- `gecoördineerde wetten op de Raad van State` returned NUMAC `1973011250` at
-  rank 0; quoting the reference with `artikel 19, tweede lid` returned 0 hits.
-ng 2016/679 artikel 32` and `32016R0679 artikel 32` returned no
-  results in testing. Search the base EU act first and validate article 32
-  afterward.
-- 2026-09-28T08:38:09Z - Een generieke titelzoekopdracht kan vooral wijzigingsakten en verwijzingen opleveren; zoek daarnaast expliciet naar het officiële basisinstrument of de geconsolideerde tekst.
-- 2026-09-28T10:22:45Z - Geef bij constitutionele zoekopdrachten voorrang aan de officiële geconsolideerde basistekst en filter afzonderlijke wijzigingsakten en loutere verwijzingen weg.
-- 2026-09-28T12:49:22Z - Geef bij zoekopdrachten naar een geconsolideerde grondwet voorrang aan officiële corpusrecords waarvan de titel de grondwet zelf benoemt, en niet aan afzonderlijke wijzigingsakten die door artikelverwijzingen worden gevonden.
-- 2026-09-28T12:54:51Z - For national legal texts, include the official publication date and prioritize the national consolidated-legislation database over generic web-result pages.
-- 2026-09-28T14:22:04Z - Filter zoekresultaten die een rechtsinstrument slechts citeren expliciet uit wanneer de gevraagde bronakte zelf moet worden geïdentificeerd.
-- 2026-09-28T14:22:36Z - Zoek Belgische koninklijke besluiten bij voorkeur in een officiële Belgische wetgevingsbron op de volledige titel en datum, en verifieer daarna afzonderlijk het identificatienummer en de aangehaalde artikeltekst.
-- 2026-09-28T14:25:12Z - Geef voor Belgische binnenlandse regelgeving voorrang aan de officiële nationale wetgevingsdatabank boven algemene EU-rechtzoekmachines en verifieer steeds de volledige titel, het instrumenttype en de publicatiegegevens.
-- 2026-09-28T14:52:46Z - For standards searches, query the designation together with “standard” and the issuing standards body rather than restricting results to legal regulations.
-- 2026-09-28T15:02:43Z - When acronym-and-number searches produce legal-article false positives, add standards-specific terms and the relevant standards body's name.
-- 2026-09-28T15:03:18Z - For references with national standard prefixes, search the relevant standards-body catalogue separately from general legal databases.
-- 2026-09-28T15:09:04Z - For standards references, search national standards catalogues alongside general legal databases.
-- 2026-09-28T15:10:20Z - When a standards query returns legal-gazette pages, verify whether each result is the standard record or merely an instrument adopting or citing the standard.
-- 2026-09-28T15:20:03Z - Wanneer een titelzoekopdracht vooral wijzigingsinstrumenten oplevert, voeg een zoekterm toe die expliciet om de oorspronkelijke of geconsolideerde basistekst vraagt en verifieer het documenttype.
-- 2026-09-28T15:24:01Z - For standards references, distinguish the standard publication from EU notices, guidance, or legal instruments that merely cite harmonised standards.
-- 2026-09-28T15:33:34Z - For standards identifiers, search the relevant national or regional standards body's catalogue directly, since general web results may return legal notices that cite the standard rather than the standard record.
-- 2026-09-28T15:37:49Z - For technical-standard queries, distinguish an official standards-catalog record for the standard itself from legal or regulatory documents that merely cite it.
-- 2026-09-28T15:42:21Z - For standards references, prioritize results from the relevant standards body or standards catalogue and reject legal acts that only share a numeric identifier.
-- 2026-09-28T16:02:23Z - For standards identified by an alphanumeric designation, prioritize standards-body catalogs and exact-identifier searches over general legal databases.
-- 2026-09-28T16:06:10Z - For standards queries, search the national standards body's catalogue separately from legal databases to distinguish the base standard from EU notices that cite it.
-- 2026-09-28T16:08:20Z - For standards references, distinguish the standard’s own official catalogue record from legal notices or harmonised-standard publications that merely list or cite it.
-- 2026-09-28T16:11:42Z - When a query names a legal code, distinguish the original instrument from later amending acts that merely cite or modify it.
-- 2026-09-28T16:12:08Z - Distinguish notices that reference harmonized standards from the national standards publication or adopted standard itself.
-- 2026-09-28T16:14:26Z - When a standards query returns legal notices, search the relevant standards catalogue directly and treat EU harmonisation notices as citations rather than the standard itself.
-- 2026-09-28T16:17:34Z - Bij onvolledige resultaten voor een exacte titel: herhaal de zoekopdracht met de datum, enkele onderscheidende titeltermen en het documenttype.
-- 2026-09-28T16:19:14Z - Behandel jurisprudentieresultaten die een regeling citeren afzonderlijk van het officiële basisinstrument en zoek daarna expliciet op de documentsoort en datum.
-- 2026-09-28T16:20:09Z - Prefer official title-field matches over full-text hits when a query term is a common legal shorthand.
-- 2026-09-28T16:24:33Z - When searching for a standard, distinguish catalog records for the standard from legal notices that merely publish or cite harmonized standards.
-- 2026-09-28T16:39:18Z - When legal-title searches return aggregator or unrelated results, prioritize records exposing the official title, enactment date, and consolidated-text metadata.
-- 2026-09-28T16:40:07Z - Zoek bij een informele juridische titel ook op de formele titel en controleer expliciet of een resultaat het basisinstrument, een geconsolideerde tekst of slechts een wijzigingsdocument is.
-- 2026-09-28T16:42:02Z - When searching legislation by date and subject, distinguish the base law from later amendment laws by verifying the enactment date and whether the title expressly states that it amends an earlier instrument.
-- 2026-09-28T16:43:35Z - Zoek bij Nederlandstalige regelgeving naast de exacte titel ook naar gangbare varianten van de instrumentnaam, omdat webindexen het basisbesluit soms niet onder de aangeleverde titel tonen.
-- 2026-09-28T16:44:40Z - Combineer bij Belgische KB-zoekopdrachten de volledige officiële titel met een verwijzing naar het Staatsblad en verifieer daarna de officiële identificatiepagina in plaats van alleen zoekresultaatsnippets te gebruiken.
-- 2026-09-28T16:45:30Z - When title-and-date searches return legislative records, distinguish the base instrument from later amendments and documents that merely cite it.
-- 2026-09-28T16:47:28Z - When a query names a statute by date, distinguish the statute itself from later amending acts and judicial documents that merely cite it.
-- 2026-09-28T16:49:05Z - Wanneer zoekresultaten vooral wijzigingsakten opleveren, zoek de oorspronkelijke akte afzonderlijk op officieel documenttype en vaststellingsdatum.
-- 2026-09-28T16:49:28Z - When date-based results mix base instruments with amendments, verify the official title and persistent identifier before selecting.
-- 2026-09-28T16:50:18Z - When date-and-topic searches return amendment records, verify each record's own enactment date before selecting it.
-- 2026-09-28T16:54:39Z - When the target may be a technical standard, search beyond regulation filters and verify results against the relevant standards publisher’s official catalogue.
-- 2026-09-28T16:56:32Z - For standards identifiers, prioritize official standards-body catalogs and filter out legal databases and unrelated EUR-Lex results.
-- 2026-09-28T16:57:20Z - Richt zoekopdrachten naar Belgische nationale regelgeving expliciet op de officiële Staatsblad- of overheidsdatabank wanneer algemene webzoekresultaten vooral EU-bronnen opleveren.
-- 2026-09-28T16:57:39Z - Zoek voor Belgische omzendbrieven naast de afkorting ook op de vermoedelijke uitgevende overheidsdienst en controleer het documenttype afzonderlijk van de aangehaalde basiswet.
-- 2026-09-28T16:59:06Z - When an identifier denotes a technical standard, search the issuing standards body's catalogue rather than relying on legal databases that only cite standards.
-- 2026-09-28T16:59:35Z - Gebruik bij Belgische rechtsbronnen naast onderwerpstermen ook de exacte officiële titel en zoek specifiek in het Staatsblad op publicatiedatum of NUMAC-nummer.
-- 2026-09-28T16:59:58Z - Gebruik bij brede webzoekopdrachten naast datum- en trefwoordzoekingen ook een exacte-titelzoeking, omdat algemene resultaten vaak ongerelateerde instrumenten opleveren.
-- 2026-09-28T17:00:18Z - When exact-title results are dominated by amendments or case-law citations, search separately for the original publication record and exclude documents that merely cite the instrument.
-- 2026-09-28T17:01:47Z - For standards identifiers, prioritize standards-catalogue records and exact identifier/title queries over general legal databases.
-- 2026-09-28T17:02:25Z - Controleer bij exacte-titelzoekopdrachten eerst of het resultaat het basisinstrument is en niet slechts een artikel-, wijzigings- of citeerpagina.
-- 2026-09-28T17:02:50Z - Geef bij Belgische wetgeving voorrang aan een officiële documentpagina met volledige titel, datum en NUMAC-identificatie boven algemene zoek- of archiefpagina’s.
-- 2026-09-28T17:04:44Z - Geef bij Belgische wetgevingszoekopdrachten voorrang aan officiële Staatsbladrecords en controleer expliciet of een resultaat het basisinstrument is in plaats van een document dat het slechts citeert.
-- 2026-09-28T17:06:31Z - Combineer bij nationale regelgeving een exacte titelzoekopdracht met de vermoedelijke officiële publicatiedatabase en sluit gelijknamige EU-speelgoedregelgeving expliciet uit.
-- 2026-09-28T17:06:52Z - Wanneer een exacte titelzoekopdracht niets oplevert, herhaal de zoekactie met afzonderlijke termen voor documenttype, bevoegdheidsniveau en onderwerp, en controleer daarna de officiële publicatiebron.
-- 2026-09-28T17:07:27Z - Controleer bij titelzoekopdrachten eerst de officiële titel en documentsoort; resultaten die de gezochte datum of tekst slechts citeren zijn geen bevestiging van het basisinstrument.
-- 2026-09-28T17:08:05Z - When broad legal-name searches surface case-law pages, verify the result’s document kind before treating cited legislation as a candidate.
-- 2026-09-28T19:05:52Z - When a query names a technical standard, prioritize standards-body catalogs and treat EU legal acts that cite the standard as non-matches.
-- 2026-09-28T19:07:22Z - When exact-title searches return amendment acts, inspect the official source’s related or base-instrument record rather than treating amendment hits as the requested instrument.
-- 2026-09-28T19:17:35Z - For standards references, distinguish the standard’s official catalogue record from EU notices or other documents that merely cite the standard.
-- 2026-09-28T19:19:49Z - For standards queries, retain only results whose official title or metadata explicitly contains the standard designation or a clearly matching standards-document identity.
-- 2026-09-28T19:27:32Z - For standards searches, query the issuing standards body’s catalog using the exact national designation and distinguish the base standard from EU notices that merely cite it.
-- 2026-09-28T19:35:21Z - When searching for a technical standard, distinguish the standard’s official catalogue record from legal notices or harmonisation documents that merely cite it.
-- 2026-09-28T19:43:16Z - Vraag bij juridische zoekopdrachten expliciet om het basisinstrument, omdat titel- en datumzoekopdrachten vaak wijzigingsakten of verwijzingen opleveren.
-- 2026-09-28T19:45:17Z - For standards searches, verify that the result is the standard record itself rather than a legal act that merely cites the standard.
-- 2026-09-28T19:58:19Z - Controleer bij zoekresultaten voor wetgeving eerst de officiële titel en documentsoort; zoek bij ruis op de onderscheidende onderwerpformulering in plaats van alleen op datum.
-- 2026-09-28T20:00:36Z - Behandel treffers naar EU-rechtshandelingen die een technische norm slechts citeren niet als kandidaat voor de norm zelf; zoek daarnaast in de officiële catalogus van de nationale normalisatie-instelling.
-- 2026-09-29T07:23:16Z - For national adoptions of European standards, search the relevant national standards body's catalogue directly rather than relying on general web results.
-- 2026-09-29T07:56:41Z - For technical-standard references, search standards catalogs or standards-body sources in addition to general legal-text indexes.
-- 2026-09-29T08:01:00Z - For standards identifiers, include the national standards body and standard title in the query, then prioritize standards-catalogue results over general legal databases.
-- 2026-09-29T08:03:21Z - For standards searches, distinguish the standard record from legislation or EU notices that merely publish, cite, or list the standard.
+- 2026-08-01T12:19:38Z - Search the base instrument first and validate article locators afterward.
+- 2026-08-01T12:19:38Z - Use distinctive subject terms with dates for generic legal titles.
+- 2026-09-24T11:08:53Z - Add the official identifier or full title when a generic title returns referring documents.
+- 2026-09-28T08:38:09Z - Distinguish the official base instrument or consolidated text from amendments and citations.
+- 2026-09-28T14:52:46Z - Search standards in the relevant standards-body catalogue rather than relying on legal databases.
+- 2026-09-28T16:24:33Z - Prefer official title-field matches over full-text hits for common legal shorthand.
+- 2026-10-05T09:18:07Z - For Belgian legal acts, prioritize exact title-and-date searches in official national legal databases.

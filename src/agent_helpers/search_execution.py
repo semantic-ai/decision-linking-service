@@ -2,12 +2,13 @@
 
 import json
 import logging
+from time import perf_counter
 from typing import Any
 
 from langchain_core.messages import BaseMessage, ToolMessage
 from pydantic import TypeAdapter
 
-from src.agent_helpers.models import AttemptTrace, SearchSource
+from src.agent_helpers.models import AttemptTrace, ClassifiedReference, SearchSource
 from src.models import SearchOutcome, SearchResult
 
 
@@ -89,6 +90,29 @@ def _add_unique_candidates(
             known.add(identity)
 
 
+def _is_exact_identifier_match(
+    classified: ClassifiedReference | None,
+    source: SearchSource,
+    arguments: dict[str, Any],
+    outcome: SearchOutcome,
+) -> bool:
+    identifier = (classified.identifier if classified else None) or ""
+    if len(identifier.strip()) < 5 or not outcome.complete or outcome.truncated or outcome.errors:
+        return False
+    identifier_key = "".join(identifier.casefold().split())
+    argument_text = "".join(str(arguments).casefold().split())
+    if identifier_key not in argument_text:
+        return False
+    matches = []
+    for candidate in outcome.candidates:
+        candidate_text = "".join(
+            f"{candidate.title} {candidate.doc_id} {candidate.metadata}".casefold().split()
+        )
+        if identifier_key in candidate_text:
+            matches.append(candidate)
+    return len(matches) == 1 and (source == SearchSource.EBESLUITVORMING or identifier_key in argument_text)
+
+
 async def execute_candidate_search(
     *,
     search_model,
@@ -97,12 +121,14 @@ async def execute_candidate_search(
     source: SearchSource,
     messages: list[BaseMessage],
     max_search_attempts: int,
+    classified_reference: ClassifiedReference | None = None,
     trace: list[AttemptTrace],
     candidates: list[SearchResult],
 ) -> dict[str, Any]:
     """Run the bounded model/tool conversation and return graph state updates."""
     trace = list(trace)
     candidates = list(candidates)
+    attempts_before = len(trace)
     argument_use_counts: dict[str, int] = {}
     retryable_repeat_signatures: set[str] = set()
     for attempt in trace:
@@ -122,11 +148,18 @@ async def execute_candidate_search(
         else:
             retryable_repeat_signatures.discard(signature)
 
-    while len(trace) < max_search_attempts:
+    while len(trace) - attempts_before < max_search_attempts:
+        llm_started_at = perf_counter()
         try:
             response = await search_model.ainvoke(messages)
+            llm_ms = (perf_counter() - llm_started_at) * 1000
         except Exception as error:
-            logger.warning("Candidate-search model failed: %s", error)
+            llm_ms = (perf_counter() - llm_started_at) * 1000
+            logger.warning(
+                "Candidate-search model failed: %s duration_ms=%.0f",
+                error,
+                llm_ms,
+            )
             trace.append(
                 AttemptTrace(
                     attempt=len(trace) + 1,
@@ -143,13 +176,15 @@ async def execute_candidate_search(
         if not tool_calls:
             break
 
-        remaining = max_search_attempts - len(trace)
+        remaining = max_search_attempts - (len(trace) - attempts_before)
+        stop_after_tool = False
         for call in tool_calls[:remaining]:
             attempt_number = len(trace) + 1
             call_name = call.get("name") or ""
             arguments: dict[str, Any] = {}
             outcome = SearchOutcome()
             error_text: str | None = None
+            tool_started_at = perf_counter()
 
             try:
                 arguments = dict(call.get("args") or {})
@@ -179,8 +214,24 @@ async def execute_candidate_search(
                 outcome = SearchOutcome(complete=False)
                 error_text = str(error)
                 logger.warning(
-                    "Search attempt with %s failed: %s", tool_name, error
+                    "Search attempt with %s failed: %s tool_ms=%.0f llm_ms=%.0f",
+                    tool_name,
+                    error,
+                    (perf_counter() - tool_started_at) * 1000,
+                    llm_ms,
                 )
+
+            logger.info(
+                "Graph search result tool=%s candidates=%d complete=%s truncated=%s attempt=%d/%d tool_ms=%.0f llm_ms=%.0f",
+                tool_name,
+                len(outcome.candidates),
+                outcome.complete,
+                outcome.truncated,
+                attempt_number,
+                max_search_attempts,
+                (perf_counter() - tool_started_at) * 1000,
+                llm_ms,
+            )
 
             trace.append(
                 AttemptTrace(
@@ -206,6 +257,16 @@ async def execute_candidate_search(
                     name=call_name or tool_name,
                 )
             )
+            if _is_exact_identifier_match(
+                classified_reference,
+                source,
+                arguments,
+                outcome,
+            ):
+                stop_after_tool = True
+                break
+        if stop_after_tool:
+            break
 
     return {
         "attempt_count": len(trace),

@@ -128,10 +128,12 @@ flowchart TD
 
     ValidateCandidates --> DecisionState{"Terminal Status"}
     DecisionState -- "Resolved (1 match)" --> ResNode["status: resolved<br>Single official candidate"]
+    DecisionState -- "Qualified current equivalent" --> QualNode["status: resolved_with_caveat<br>Current/consolidated equivalent"]
     DecisionState -- "Ambiguous (2+ matches)" --> AmbNode["status: ambiguous<br>Multiple plausible candidates"]
     DecisionState -- "Unresolved (0 matches)" --> UnresNode["status: unresolved<br>Zero candidates confirmed"]
 
     ResNode --> EndResponse(["Return ResolutionResponse"])
+    QualNode --> EndResponse
     AmbNode --> EndResponse
     UnresNode --> EndResponse
 ```
@@ -144,7 +146,7 @@ flowchart TD
 - The reference string is classified via structured output into a normalized `ClassifiedReference` object.
 - Extracts identifying facts: `title`, `aliases`, `document_type` (`decree`, `law`, `executive_order`, etc.), `document_date`, `identifier`, and citation locators (`article`, `paragraph`, `subsection`, `point`).
 - Identifies local context: `municipality` and `governing_body`.
-- Routes to one authoritative source (`codex`, `dsi`, `ebesluitvorming`, `reglement`, `lblod`, or `web_search`). Spatial planning instruments (RUP, BPA, APA, gewestplan) and all stedenbouwkundige verordeningen (SVO) / bouwverordeningen (BVO) route to `dsi`, while general municipal regulations (belastingen, retributies, subsidies, politie) route to `reglement`. If the reference lacks sufficient context (e.g., LBLOD query without a municipality) or references an unsupported source, execution routes directly to `END` with status `unresolved`.
+- Routes to one primary authoritative source (`codex`, `dsi`, `ebesluitvorming`, `reglement`, `lblod`, or `web_search`), with at most one conservative fallback source at a known boundary. Spatial planning instruments (RUP, BPA, APA, gewestplan) and all stedenbouwkundige verordeningen (SVO) / bouwverordeningen (BVO) route to `dsi`, while general municipal regulations (belastingen, retributies, subsidies, politie) route to `reglement`. If the reference lacks sufficient context (e.g., LBLOD query without a municipality) or references an unsupported source, execution routes directly to `END` with status `unresolved`.
 
 #### 2. Source Guideline Loading (`fetch_guidelines`)
 - Fetches the curated operational guideline markdown for the selected source via the FastMCP `fetch_guidelines` tool.
@@ -152,7 +154,7 @@ flowchart TD
 
 #### 3. Bounded Candidate Search (`search_candidates`)
 - A bounded tool-calling loop where the LLM is bound **strictly** to the single search tool corresponding to the classified source (`search_codex`, `search_dsi`, `search_ebesluitvorming`, `search_reglement`, `search_lblod`, or `search_web`).
-- The model may refine searches across multiple turns, up to `max_search_attempts` (default: `3`).
+- The model may refine searches across multiple turns, up to `max_search_attempts` per source pass (default: `3`, maximum: `5`). An unresolved pass may use one ranked fallback source when `max_pivots` permits it.
 - **Safety guards**:
   - Python rejects calls to unauthorized tools.
   - Repeated identical search arguments are blocked without making redundant network calls (unless the prior attempt returned exclusively retryable source errors).
@@ -165,6 +167,20 @@ flowchart TD
   - The model may only select candidate indices provided in the prompt.
   - Invariants are checked: `resolved` must select exactly 1 index; `ambiguous` must select 2 or more indices; `unresolved` must select 0 indices. Any out-of-bounds index or invariant violation automatically falls back to `unresolved`.
 - The validator can propose an optional one-line `proposed_guideline_lesson` for offline operational review (live requests never modify guidelines directly).
+
+#### Exact and qualified outcomes
+
+An exact `resolved` link identifies the requested instrument and version and
+uses reason code `confirmed`. A `resolved_with_caveat` link is an additive,
+clickable qualification: it points to an authoritative current or consolidated
+municipal regulation when the requested dated version is unavailable, but it
+does not prove that the cited historical version existed. Qualified links use
+their caveat as the link title and are excluded from the resolution cache.
+
+Every response exposes one machine-readable `reason_code` alongside the human
+`reason`: `confirmed`, `current_equivalent`, `version_mismatch`,
+`source_no_match`, `source_incomplete`, `unsupported_source`,
+`insufficient_reference`, `candidate_conflict`, or `validation_failure`.
 
 #### 5. Response Construction
 - Generates a `ResolutionResponse` containing the final status, selected candidates (with original URLs and timestamps intact), decision reason, attempt count, full execution trace, and any proposed lesson.
@@ -193,9 +209,11 @@ Each search adapter implements the `LegislationSearch` base class and returns a 
 ```python
 class ResolutionResponse(BaseModel):
     reference: str                              # Original reference string
-    status: ResolutionStatus                    # "resolved" | "ambiguous" | "unresolved"
+    status: ResolutionStatus                    # "resolved" | "resolved_with_caveat" | "ambiguous" | "unresolved"
+    reason_code: ResolutionReasonCode           # Machine-readable outcome reason
     results: list[SearchResult]                 # Official matching documents
     reason: str                                 # Rationale for final decision
+    caveat: str | None                          # Required for qualified outcomes
     attempt_count: int                          # Number of search attempts executed
     trace: list[AttemptTrace]                   # Structured execution trace of all calls
     proposed_guideline_lesson: str | None       # Optional search guideline lesson
@@ -310,6 +328,7 @@ Settings are managed in `config.json`:
   "agent": {
     "mcp_server_url": "http://127.0.0.1:8000/mcp",
     "max_search_attempts": 3,
+    "max_pivots": 1,
     "temperature": 0.0,
     "cache_path": "var/resolution-cache.jsonl"
   },
@@ -318,7 +337,8 @@ Settings are managed in `config.json`:
 ```
 
 - `mcp_server_url`: Endpoint for the FastMCP tool server.
-- `max_search_attempts`: Upper bound of search queries allowed per lookup (1 to 3).
+- `max_search_attempts`: Upper bound of search queries per source pass (1 to 5).
+- `max_pivots`: Maximum ranked fallback-source passes after an unresolved validation (0 to 2, default: `1`).
 - `temperature`: Temperature for LLM calls (default: `0.0` for maximum reproducibility).
 - `cache_path`: Optional path to append-only JSONL resolution records (set to `null` or omit to disable).
 - `prompts`: Optional dictionary to override default prompts (`classify_reference`, `search_candidates`, `validate_candidates`) without altering Python code.
@@ -329,7 +349,7 @@ Settings are managed in `config.json`:
 
 When `cache_path` is configured, construct `ResolutionCacheService` with an
 `ResolutionCacheWriter` for that path. The service calls the agent once and
-appends only resolved responses with exactly one result and complete,
+appends only exact `resolved` responses with exactly one result and complete,
 non-truncated, error-free source attempts. Each record stores the searched
 mention and the canonical `doc_reference` separately; its key is derived from
 the normalized document reference so different mentions of the same document

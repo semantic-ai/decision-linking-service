@@ -27,8 +27,10 @@ class _AgentFileConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     mcp_server_url: str = "http://127.0.0.1:8000/mcp"
-    max_search_attempts: int = Field(default=3, ge=1, le=3)
+    max_search_attempts: int = Field(default=3, ge=1, le=5)
+    max_pivots: int = Field(default=1, ge=0, le=2)
     temperature: float = 0.0
+    reasoning_effort: str = "none"
     cache_path: str | None = None
 
 
@@ -145,7 +147,9 @@ def load_agent_config(
         model=model,
         mcp_server_url=file_config.agent.mcp_server_url,
         max_search_attempts=file_config.agent.max_search_attempts,
+        max_pivots=file_config.agent.max_pivots,
         temperature=file_config.agent.temperature,
+        reasoning_effort=file_config.agent.reasoning_effort,
         llm_deployment=llm_deployment,
         prompt_overrides=prompt_overrides,
         cache_path=cache_path,

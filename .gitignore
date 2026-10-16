@@ -9,3 +9,8 @@ __pycache__/
 /results
 /.github
 AGENTS.md
+/.codex-presentation-build
+/docs
+/presentations
+/testing
+/scripts
